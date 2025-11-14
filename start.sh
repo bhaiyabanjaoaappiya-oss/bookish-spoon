@@ -1,79 +1,84 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# ❗ Do not touch (as requested)
+# ❗ As per your demand – don't touch this style
 VNC_PASSWORD="${VNC_PASSWORD:-}"
 
-# Your custom username/password
+# Your chosen username/password
 USERNAME="${USERNAME:-Sapna}"
 PASSWORD="${PASSWORD:-Sapna}"
 
 TAILSCALE_AUTHKEY="${TAILSCALE_AUTHKEY:-}"
 GITHUB_RUN_ID="${GITHUB_RUN_ID:-$(date +%s)}"
-ENABLE_VNC_FLAG=true   # VNC always ON
+ENABLE_VNC_FLAG=true
 
-if [[ $EUID -ne 0 ]]; then
-  echo "Run this script as root (sudo)."
-  exit 1
-fi
-
+# Check Tailscale auth key
 if [[ -z "$TAILSCALE_AUTHKEY" ]]; then
   echo "ERROR: TAILSCALE_AUTHKEY is missing."
   exit 1
 fi
 
-# Ensure Homebrew
+echo "[*] Running as user: $(whoami)"
+
+# ---------------- Homebrew ensure (NO sudo here) ----------------
 if ! command -v brew >/dev/null 2>&1; then
-  echo "[*] Installing Homebrew (if this fails, you may need to install manually)..."
+  echo "[*] Homebrew not found, trying to install (this may fail on CI)..."
   /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" || true
   export PATH="/usr/local/bin:/opt/homebrew/bin:$PATH"
 fi
 
-# Create user if missing
+# ---------------- Create user Sapna (with sudo) ----------------
 if ! id -u "$USERNAME" >/dev/null 2>&1; then
   echo "[*] Creating user: $USERNAME"
   if command -v sysadminctl >/dev/null 2>&1; then
-    sysadminctl -addUser "$USERNAME" -fullName "$USERNAME" -password "$PASSWORD" -admin || true
-    createhomedir -c -u "$USERNAME" >/dev/null 2>&1 || true
+    sudo sysadminctl -addUser "$USERNAME" -fullName "$USERNAME" -password "$PASSWORD" -admin || true
+    sudo createhomedir -c -u "$USERNAME" >/dev/null 2>&1 || true
   else
     HOME_DIR="/Users/$USERNAME"
     UID_NEW=$((1000 + RANDOM))
-    dscl . -create /Users/"$USERNAME"
-    dscl . -create /Users/"$USERNAME" UserShell /bin/bash
-    dscl . -create /Users/"$USERNAME" RealName "$USERNAME"
-    dscl . -create /Users/"$USERNAME" UniqueID "$UID_NEW"
-    dscl . -create /Users/"$USERNAME" PrimaryGroupID 80
-    dscl . -create /Users/"$USERNAME" NFSHomeDirectory "$HOME_DIR"
-    dscl . -passwd /Users/"$USERNAME" "$PASSWORD"
-    createhomedir -c -u "$USERNAME" >/dev/null 2>&1 || true
+    sudo dscl . -create /Users/"$USERNAME"
+    sudo dscl . -create /Users/"$USERNAME" UserShell /bin/bash
+    sudo dscl . -create /Users/"$USERNAME" RealName "$USERNAME"
+    sudo dscl . -create /Users/"$USERNAME" UniqueID "$UID_NEW"
+    sudo dscl . -create /Users/"$USERNAME" PrimaryGroupID 80
+    sudo dscl . -create /Users/"$USERNAME" NFSHomeDirectory "$HOME_DIR"
+    sudo dscl . -passwd /Users/"$USERNAME" "$PASSWORD"
+    sudo createhomedir -c -u "$USERNAME" >/dev/null 2>&1 || true
   fi
 else
   echo "[*] User $USERNAME already exists."
 fi
 
-# Install Tailscale
+# ---------------- Install Tailscale (NO sudo) ----------------
 if ! command -v tailscale >/dev/null 2>&1; then
-  echo "[*] Installing Tailscale..."
-  brew install --cask tailscale || brew install tailscale || true
+  echo "[*] Installing Tailscale via Homebrew..."
+  brew install --cask tailscale || brew install tailscale || {
+    echo "ERROR: Failed to install Tailscale. Check Homebrew."
+    exit 1
+  }
+else
+  echo "[*] Tailscale already installed."
 fi
 
-# Start tailscaled
+# ---------------- Start tailscaled (WITH sudo) ----------------
 if ! pgrep -x tailscaled >/dev/null 2>&1; then
-  echo "[*] Starting tailscaled..."
-  nohup tailscaled >/var/log/tailscaled.log 2>&1 &
+  echo "[*] Starting tailscaled (sudo)..."
+  sudo nohup tailscaled >/var/log/tailscaled.log 2>&1 &
   sleep 1
+else
+  echo "[*] tailscaled already running."
 fi
 
 TS_HOST="sapna-vm-${GITHUB_RUN_ID}"
 
 echo "[*] Bringing Tailscale up (hostname: $TS_HOST)"
-tailscale up \
+sudo tailscale up \
   --authkey "${TAILSCALE_AUTHKEY}" \
   --hostname "${TS_HOST}" \
   --accept-routes \
   --accept-dns=false || true
 
-TS_IP=$(tailscale ip -4 | head -n1 || true)
+TS_IP=$(tailscale ip -4 2>/dev/null | head -n1 || true)
 echo "[*] Tailscale IPv4: ${TS_IP:-none}"
 
 # Export for GitHub Actions
@@ -82,7 +87,7 @@ if [[ -n "${GITHUB_ENV:-}" ]]; then
   echo "CONNECTION_TYPE=Tailscale" >> "$GITHUB_ENV"
 fi
 
-# Enable VNC (legacy) using PASSWORD (Sapna)
+# ---------------- Enable VNC (legacy) ----------------
 if [[ "$ENABLE_VNC_FLAG" = true ]]; then
   echo "[*] Enabling VNC / Apple Remote Desktop..."
   K="/System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart"
@@ -91,17 +96,17 @@ if [[ "$ENABLE_VNC_FLAG" = true ]]; then
     sudo "$K" -configure -allowAccessFor -allUsers -privs -all
     sudo "$K" -configure -clientopts -setvnclegacy -vnclegacy yes
 
-    # Set obfuscated VNC password = $PASSWORD (Sapna)
+    # ✅ FIXED perl line (no extra curly brace)
     echo -n "$PASSWORD" | \
-      perl -we 'BEGIN { @k=unpack "C*",pack "H*","1734516E8BA8C5E2FF1C39567390ADCA"} $_=<>;chomp;@p=unpack"C*",substr($_,0,8);foreach(@k){printf"%02X",$_^(shift@p||0)}}' \
+      perl -we 'BEGIN { @k = unpack "C*", pack "H*", "1734516E8BA8C5E2FF1C39567390ADCA" } $_ = <>; chomp; @p = unpack "C*", substr($_, 0, 8); foreach (@k) { printf "%02X", $_ ^ (shift @p || 0) }' \
       | sudo tee /Library/Preferences/com.apple.VNCSettings.txt >/dev/null
 
     sudo "$K" -restart -agent -console
     sudo "$K" -activate
     echo "[*] VNC enabled. Username: $USERNAME  Password: $PASSWORD"
   else
-    echo "WARNING: ARD kickstart tool not found; cannot enable VNC automatically."
+    echo "WARNING: ARD kickstart tool not found; cannot enable VNC."
   fi
 fi
 
-echo "[*] start.sh complete — Tailscale IP: ${TS_IP:-none}"
+echo "[*] start.sh completed 🎉 — Tailscale IP: ${TS_IP:-none}"
