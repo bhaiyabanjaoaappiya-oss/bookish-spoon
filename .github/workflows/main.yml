@@ -1,0 +1,31 @@
+name: Sapna - macOS Tailscale VNC
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest
+    env:
+      USERNAME: Sapna
+      PASSWORD: Sapna
+      TAILSCALE_AUTHKEY: ${{ secrets.TAILSCALE_AUTHKEY }}
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Make scripts executable
+        run: |
+          chmod +x start.sh
+          chmod +x login.sh
+
+      - name: Start macOS with Tailscale + VNC
+        run: |
+          echo "::add-mask::${{ secrets.TAILSCALE_AUTHKEY }}"
+          sudo ./start.sh
+
+      - name: Show connection info
+        run: |
+          ./login.sh
+          echo "Tailscale IP from ENV: $CONNECTION_IP"
