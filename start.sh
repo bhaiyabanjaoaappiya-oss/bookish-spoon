@@ -22,10 +22,10 @@ echo "[*] Running as user: $(whoami)"
 
 # ---------------- Homebrew ensure (NO sudo here) ----------------
 if ! command -v brew >/dev/null 2>&1; then
-  echo "[*] Homebrew not found, trying to install (this may fail on CI)..."
+  echo "[*] Homebrew not found, trying to install..."
   /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" || true
-  export PATH="/usr/local/bin:/opt/homebrew/bin:$PATH"
 fi
+export PATH="/usr/local/bin:/opt/homebrew/bin:$PATH"
 
 # ---------------- Create user Sapna (with sudo) ----------------
 if ! id -u "$USERNAME" >/dev/null 2>&1; then
@@ -60,11 +60,13 @@ else
   echo "[*] Tailscale already installed."
 fi
 
-# ---------------- Start tailscaled (WITH sudo) ----------------
+# ---------------- Start tailscaled (WITH sudo, log to /tmp) ----------------
+LOGFILE="/tmp/tailscaled.log"
+
 if ! pgrep -x tailscaled >/dev/null 2>&1; then
-  echo "[*] Starting tailscaled (sudo)..."
-  sudo nohup tailscaled >/var/log/tailscaled.log 2>&1 &
-  sleep 1
+  echo "[*] Starting tailscaled (sudo)... (log: $LOGFILE)"
+  sudo nohup tailscaled >>"$LOGFILE" 2>&1 &
+  sleep 2
 else
   echo "[*] tailscaled already running."
 fi
@@ -96,7 +98,7 @@ if [[ "$ENABLE_VNC_FLAG" = true ]]; then
     sudo "$K" -configure -allowAccessFor -allUsers -privs -all
     sudo "$K" -configure -clientopts -setvnclegacy -vnclegacy yes
 
-    # ✅ FIXED perl line (no extra curly brace)
+    # ✅ Fixed perl line – obfuscate password for VNC
     echo -n "$PASSWORD" | \
       perl -we 'BEGIN { @k = unpack "C*", pack "H*", "1734516E8BA8C5E2FF1C39567390ADCA" } $_ = <>; chomp; @p = unpack "C*", substr($_, 0, 8); foreach (@k) { printf "%02X", $_ ^ (shift @p || 0) }' \
       | sudo tee /Library/Preferences/com.apple.VNCSettings.txt >/dev/null
@@ -110,3 +112,4 @@ if [[ "$ENABLE_VNC_FLAG" = true ]]; then
 fi
 
 echo "[*] start.sh completed 🎉 — Tailscale IP: ${TS_IP:-none}"
+echo "[*] tailscaled log: $LOGFILE (if needed)"
