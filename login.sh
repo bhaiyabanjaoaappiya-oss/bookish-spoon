@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# As you strictly demanded 😆
 VNC_PASSWORD="${VNC_PASSWORD:-}"
 
 USERNAME="${USERNAME:-Sapna}"
@@ -15,7 +16,7 @@ if command -v tailscale >/dev/null 2>&1; then
   echo
   tailscale status || true
 else
-  echo "Tailscale is not installed."
+  echo "Tailscale is not installed or not in PATH."
 fi
 
 echo
