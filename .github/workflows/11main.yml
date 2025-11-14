@@ -1,0 +1,32 @@
+name: Sapna 111 - macOS Tailscale VNC
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest
+    timeout-minutes: 360   # 🔥 yeh naya feature add kar diya
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Make scripts executable
+        run: |
+          chmod +x start.sh
+          chmod +x login.sh
+
+      - name: Start macOS with Tailscale + VNC
+        env:
+          USERNAME: Sapna
+          PASSWORD: Sapna
+          TAILSCALE_AUTHKEY: ${{ secrets.TAILSCALE_AUTHKEY }}
+        run: |
+          echo "::add-mask::${TAILSCALE_AUTHKEY}"
+          ./start.sh
+
+      - name: Show connection info
+        run: |
+          ./login.sh
+          echo "Tailscale IP from ENV: $CONNECTION_IP"
