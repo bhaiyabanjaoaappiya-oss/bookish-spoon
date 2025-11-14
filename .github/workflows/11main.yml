@@ -6,7 +6,7 @@ on:
 jobs:
   build:
     runs-on: macos-latest
-    timeout-minutes: 360   # 🔥 yeh naya feature add kar diya
+    timeout-minutes: 350   # max 6 ghante
 
     steps:
       - name: Checkout repository
@@ -30,3 +30,9 @@ jobs:
         run: |
           ./login.sh
           echo "Tailscale IP from ENV: $CONNECTION_IP"
+
+      - name: Keep session alive for remote access
+        run: |
+          echo "✅ Sapna VM ready. Keeping runner alive for 6 hours..."
+          # 6 hours = 21600 seconds
+          sleep 21500
