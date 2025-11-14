@@ -74,14 +74,22 @@ fi
 TS_HOST="sapna-vm-${GITHUB_RUN_ID}"
 
 echo "[*] Bringing Tailscale up (hostname: $TS_HOST)"
-sudo tailscale up \
+if ! sudo tailscale up \
   --authkey "${TAILSCALE_AUTHKEY}" \
   --hostname "${TS_HOST}" \
   --accept-routes \
-  --accept-dns=false || true
+  --accept-dns=false; then
+  echo "❌ tailscale up failed. Debug info:"
+  sudo tailscale status || true
+  exit 1
+fi
 
 TS_IP=$(tailscale ip -4 2>/dev/null | head -n1 || true)
-echo "[*] Tailscale IPv4: ${TS_IP:-none}"
+if [[ -z "$TS_IP" ]]; then
+  echo "⚠️ tailscale ip -4 returned empty. Something is off (authkey / tailnet)."
+else
+  echo "[*] Tailscale IPv4: $TS_IP"
+fi
 
 # Export for GitHub Actions
 if [[ -n "${GITHUB_ENV:-}" ]]; then
